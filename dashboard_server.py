@@ -224,8 +224,8 @@ async def handle_health(request: web.Request) -> web.Response:
 import base64
 import secrets as _secrets
 
-_ENV_PASS = os.environ.get("DASH_PASS", "")
-DASH_PASS = _ENV_PASS or _secrets.token_urlsafe(9)
+# Fixed dashboard password (default 777). Can still be overridden via the DASH_PASS env var.
+DASH_PASS = os.environ.get("DASH_PASS", "") or "777"
 
 
 @web.middleware
@@ -246,8 +246,6 @@ async def auth_middleware(request, handler):
 
 async def start_web_dashboard(host: str = "0.0.0.0", port: int = 5000):
     app = web.Application(middlewares=[auth_middleware])
-    if not _ENV_PASS:
-        print(f"[!] DASH_PASS not set. Temporary dashboard password: {DASH_PASS}")
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/stats", handle_get_stats)
     app.router.add_post("/api/account/add", handle_add_account)
