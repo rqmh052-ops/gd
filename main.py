@@ -1635,7 +1635,7 @@ async def functional_lone_wolf(addrs, starter_packet, account_region, client_ver
                         pass
 
                     now = asyncio.get_running_loop().time()
-                    if now - last_start_time >= START_MATCH_INTERVAL:
+                    if len(play_matches) == 0 and now - last_start_time >= START_MATCH_INTERVAL:
                         await send_start_match()
 
                     try:
@@ -1717,11 +1717,38 @@ async def functional_lone_wolf(addrs, starter_packet, account_region, client_ver
                                 play_matches.append(new_match)
                                 consecutive_parse_failures = 0
                                 try:
+                                    bot_state.update_status(uid_str, "IN_MATCH", 1)
+                                except Exception:
+                                    pass
+                                print_info(f"[SEQUENTIAL] UID {uid_str}: gateway stays open until match #{match_index} ends")
+
+                                # Keep reading gateway traffic while the match runs
+                                async def drain_gateway_reader():
+                                    while not new_match.done():
+                                        try:
+                                            data_gw = await asyncio.wait_for(reader.read(4096), timeout=1.0)
+                                            if not data_gw:
+                                                break
+                                        except asyncio.TimeoutError:
+                                            continue
+                                        except Exception:
+                                            break
+
+                                drain_task = asyncio.create_task(drain_gateway_reader())
+                                try:
+                                    await new_match
+                                except Exception as e:
+                                    print_error(f"[MATCH #{match_index}] Match error: {e}")
+                                finally:
+                                    drain_task.cancel()
+
+                                play_matches[:] = [m for m in play_matches if not m.done()]
+                                try:
                                     writer.close()
                                     await writer.wait_closed()
                                 except Exception:
                                     pass
-                                print_info(f"[OFFLINE] {NEW_MATCH_DELAY}s offline → reload token → new StartMatch")
+                                print_info(f"[OFFLINE] Match #{match_index} ended → {NEW_MATCH_DELAY}s → new StartMatch")
                                 await asyncio.sleep(NEW_MATCH_DELAY)
                                 reconnects = 0
                                 break
